@@ -10,10 +10,10 @@ import { EnrollmentsModule } from 'src/enrollments/enrollments.module';
   imports: [
     MongooseModule.forFeature([{ name: Course.name, schema: CourseSchema }]),
     UsersModule,
-    forwardRef(()=>EnrollmentsModule),
+    forwardRef(() => EnrollmentsModule),
   ],
   controllers: [CoursesController],
   providers: [CoursesService],
-  exports: [CoursesService]
+  exports: [CoursesService],
 })
 export class CoursesModule {}

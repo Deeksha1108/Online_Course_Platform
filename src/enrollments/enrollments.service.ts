@@ -1,22 +1,44 @@
-import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Enrollment, EnrollmentDocument } from './enrollment.schema';
+import { User, UserDocument, Role } from 'src/users/user.schema';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { WinstonLogger } from 'src/logger/logger.service';
 
 @Injectable()
 export class EnrollmentsService {
   constructor(
     @InjectModel(Enrollment.name)
-    private enrollmentModel: Model<EnrollmentDocument>,
+    private readonly enrollmentModel: Model<EnrollmentDocument>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
+    private readonly logger: WinstonLogger,
   ) {}
 
   async enroll(userId: string, courseId: string): Promise<Enrollment> {
-    const existing = await this.enrollmentModel.findOne({
+    this.logger.log(
+      `Enrolling user ${userId} in course ${courseId}`,
+      'EnrollmentsService',
+    );
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('Not found');
+    }
+
+    if (user.role !== Role.Student) {
+      throw new UnauthorizedException('Unauthorized!');
+    }
+    const existingUser = await this.enrollmentModel.findOne({
       user: userId,
       course: courseId,
     });
-    if (existing) {
-      throw new ConflictException('User already enrolled');
+    if (existingUser) {
+      throw new ConflictException('Already Enrolled!');
     }
 
     const enrollment = new this.enrollmentModel({
@@ -35,24 +57,30 @@ export class EnrollmentsService {
       course: courseId,
     });
     if (!res) {
-      throw new ConflictException('User not enrolled');
+      throw new ConflictException('Not Enrolled!');
     }
-    return { message: 'User successfully unenrolled' };
+    return { message: 'Successfully Unenrolled' };
   }
 
   async findAll(): Promise<Enrollment[]> {
-    return this.enrollmentModel.find().populate('user').populate('course').exec();
+    return this.enrollmentModel
+      .find()
+      .populate('user')
+      .populate('course')
+      .exec();
   }
 
   async findByUser(userId: string): Promise<Enrollment[]> {
-    return this.enrollmentModel.find({ user: userId }).populate('course').exec();
+    return this.enrollmentModel
+      .find({ user: userId })
+      .populate('course')
+      .exec();
   }
 
   async findByCourse(courseId: string): Promise<Enrollment[]> {
-    return this.enrollmentModel.find({ course: courseId }).populate('user').exec();
-  }
-
-  async deleteAllEnrollmentByCourse(courseId: string): Promise<void> {
-    await this.enrollmentModel.deleteMany({ course: courseId });
+    return this.enrollmentModel
+      .find({ course: courseId })
+      .populate('user')
+      .exec();
   }
 }

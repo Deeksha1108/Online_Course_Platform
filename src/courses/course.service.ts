@@ -2,9 +2,9 @@ import { UpdateCourseDto } from './dto/update-course.dto';
 import { EnrollmentsService } from './../enrollments/enrollments.service';
 import { DeleteCourseDto } from './dto/delete-course.dto';
 import {
-  BadRequestException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -12,21 +12,24 @@ import { Course, CourseDocument } from './course.schema';
 import { UsersService } from 'src/users/users.service';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { Role } from 'src/users/user.schema';
+import { WinstonLogger } from 'src/logger/logger.service';
 
 @Injectable()
 export class CoursesService {
   constructor(
-    @InjectModel(Course.name) private courseModel: Model<CourseDocument, any>,
-    private usersService: UsersService,
-    private enrollmentsService: EnrollmentsService,
+    @InjectModel(Course.name) private courseModel: Model<CourseDocument>,
+    private readonly usersService: UsersService,
+    private readonly enrollmentsService: EnrollmentsService,
+    private readonly logger: WinstonLogger,
   ) {}
 
   async create(createCourseDto: CreateCourseDto): Promise<Course> {
+    this.logger.log('Creating course', 'CoursesService');
     const instructor = await this.usersService.findById(
       createCourseDto.instructorId,
     );
-    if (!instructor || instructor.role !== Role.INSTRUCTOR) {
-      throw new BadRequestException('Invalid instructor');
+    if (!instructor || instructor.role !== Role.Instructor) {
+      throw new UnauthorizedException('Unauthorized!');
     }
 
     const course = new this.courseModel({
@@ -42,7 +45,7 @@ export class CoursesService {
       .populate('instructor');
 
     if (!course) {
-      throw new NotFoundException('Course not found!');
+      throw new NotFoundException('Resource not found!');
     }
     return course;
   }
@@ -56,7 +59,7 @@ export class CoursesService {
 
     const course = await this.courseModel.findById(courseId);
     if (!course) {
-      throw new NotFoundException('Course not found');
+      throw new NotFoundException('Resource not found!');
     }
     if (title) {
       course.title = title;
@@ -64,26 +67,20 @@ export class CoursesService {
     if (description) {
       course.description = description;
     }
-    return course.save();
+    return await course.save();
   }
 
-  async delete(deleteCourseDto: DeleteCourseDto) {
-    const { title, instructorId } = deleteCourseDto;
+  async delete(deleteCourseDto: DeleteCourseDto): Promise<{ message: string }> {
+    const { courseId, instructorId } = deleteCourseDto;
     const existingCourse = await this.courseModel.findOne({
-      title,
+      _id: courseId,
       instructor: instructorId,
     });
     if (!existingCourse) {
-      throw new NotFoundException('Course not found!');
+      throw new NotFoundException('Resource not found!');
     }
 
-    await this.enrollmentsService.deleteAllEnrollmentByCourse(
-      existingCourse._id.toString(),
-    );
-
-    await this.courseModel.deleteOne({ _id: existingCourse._id.toString() });
-    return {
-      message: 'Course deleted successfully',
-    };
+    await this.courseModel.deleteOne({ _id: String(courseId) });
+    return { message: 'Successfully deleted!' };
   }
 }
